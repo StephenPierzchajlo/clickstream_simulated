@@ -1,0 +1,400 @@
+---
+title: "Understanding User Journeys with Clickstream Analysis"
+subtitle: "From Raw Events to UX Insight Using Markov Chains"
+author: "Stephen Pierzchajlo"
+date: today
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 2
+    code-fold: true
+execute:
+  warning: false
+  message: false
+tags:
+  - UX
+  - Clickstream Analysis
+  - Markov Chains
+  - User Research
+---
+
+Clickstream data reveals **how users navigate a product over time**, not just what pages they visit or whether they convert. Unlike traditional metrics, sequence-aware analysis shows **how early interactions shape later behavior**, helping UX teams design experiences that guide users toward their goals.
+
+In this project, I simulate clickstream data and apply **Markov chains** with **flow-based visualizations** to answer three core UX questions:
+
+1. How do users actually move through the product?
+2. Which interactions most strongly predict conversion?
+3. Where do users abandon — and in how many different ways?
+
+> **Note:** This project uses **simulated clickstream data** to demonstrate methodology. The goal is to show **how UX teams can reason about user journeys**, not to optimize a specific product funnel.
+
+## Environment Setup
+To ensure reproducibility, I use a standard analytics stack in R for data manipulation, visualization, and Markov modeling.
+
+### Load libraries and ensure reproducibility
+```{r}
+# Ensure results are reproducible
+set.seed(123)
+
+# Core data manipulation and visualization
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(ggplot2)
+library(forcats)
+
+# Modeling and visualization
+library(markovchain)
+library(ggalluvial)
+library(plotly)
+library(purrr)
+```
+
+
+## Simulating Clickstream Sessions
+
+Real clickstream data is often proprietary, so I simulate **realistic session paths.**
+
+Each session:
+
+- Begins with a page view
+- Moves through product exploration and checkout steps
+- Ends in either purchase or abandonment
+
+This simplified structure mirrors typical e-commerce behavior and lets us **focus on methodology and insight.**
+```{r}
+# Number of simulated sessions
+n_sessions <- 500
+
+# Possible interaction events
+events <- c("page_view", "product_view", "add_to_cart", "checkout", "logout")
+
+# Initialize empty dataset
+df <- data.frame(SessionID = integer(),
+                 UserID = integer(),
+                 EventType = character(),
+                 Outcome = character(),
+                 stringsAsFactors = FALSE)
+
+# Simulate session-level user journeys
+for (sid in 1:n_sessions) {
+  
+  # Random session length
+  n_events <- sample(3:6, 1)
+  path <- character(n_events)
+  
+  # All sessions start with a page view
+  path[1] <- "page_view"
+  
+  # Simulate navigation behavior
+  for (i in 2:n_events) {
+    prev <- path[i - 1]
+    if (prev == "page_view") {
+      path[i] <- sample(c("product_view", "logout"), 1, prob = c(0.7, 0.3))
+    } else if (prev == "product_view") {
+      path[i] <- sample(c("add_to_cart", "logout"), 1, prob = c(0.6, 0.4))
+    } else if (prev == "add_to_cart") {
+      path[i] <- sample(c("checkout", "logout"), 1, prob = c(0.7, 0.3))
+    } else if (prev == "checkout") {
+      path[i] <- sample(c("purchase", "no_purchase"), 1, prob = c(0.6, 0.4))
+    } else if (prev == "logout") {
+      path[i] <- "no_purchase"
+    }
+  }
+  
+  # Define session outcome based on final state
+  outcome <- ifelse(path[n_events] == "purchase", "purchase", "no_purchase")
+  
+  # Append session to dataset
+  df <- rbind(df, data.frame(SessionID = sid,
+                             UserID = sid,
+                             EventType = path,
+                             Outcome = outcome,
+                             stringsAsFactors = FALSE))
+}
+```
+
+## Transforming Events into Transitions
+
+Raw logs show **what happened**, but not **how events relate to one another.**
+
+By converting logs into **state-to-state transitions**, we can analyze navigation probabilistically. The final outcomes (purchase or no_purchase) are treated as **absorbing states**.
+```{r}
+# Build transitions table
+transitions <- df %>%
+  group_by(SessionID) %>%
+  mutate(next_event = lead(EventType)) %>%
+  ungroup() %>%
+  mutate(next_event = ifelse(is.na(next_event), Outcome, next_event))
+```
+
+## Modeling User Behavior with Markov Chains
+
+Traditional funnels assume a **fixed sequence** of steps. Markov chains allow users to:
+
+- Branch
+- Loop
+- Abandon at any point
+
+**UX perspective**: We can ask, “Given a user’s current interaction, what is the probability they eventually convert?”
+
+```{r}
+# Fit Markov chain using MLE
+mc <- markovchainFit(data = transitions[, c("EventType", "next_event")], method = "mle")$estimate
+```
+
+## Measuring Conversion Likelihood
+By making purchase and no_purchase absorbing, we can compute the **probability that each interaction eventually leads to purchase.**
+```{r}
+# Define absorbing states
+tm <- mc@transitionMatrix
+
+# Purchase is absorbing
+tm["purchase", ] <- 0
+tm["purchase", "purchase"] <- 1
+
+# No purchase is absorbing
+tm["no_purchase", ] <- 0
+tm["no_purchase", "no_purchase"] <- 1
+
+mc_abs <- new("markovchain", states = mc@states, transitionMatrix = tm)
+
+# Compute absorption probabilities
+abs_probs <- absorptionProbabilities(mc_abs)
+
+# Absorption rate dataframe
+abs_probs_df <- as.data.frame(abs_probs) %>%
+  rownames_to_column("Event") %>%
+  pivot_longer(-Event, names_to = "Outcome", values_to = "Probability")
+
+# Remove first two rows
+abs_probs_df <- abs_probs_df[-c(1, 2), ]
+```
+
+### Visualize expected outcomes by interaction
+```{r}
+# Plot probability of purchase by event
+ggplot(abs_probs_df %>%
+         mutate(Event = fct_reorder(Event, Probability, .fun = max)), aes(x = Event, y = Probability, fill = Outcome)) +
+  geom_col() +
+  coord_flip() +
+  labs(title = "Probability of Ending in Purchase or No Purchase by Event",
+       x = "Event",
+       y = "Probability") +
+  scale_fill_manual(values = c("purchase" = "steelblue", "no_purchase" = "tomato")) +
+  theme_minimal()
+```
+**UX Insight:**
+
+-Later-stage interactions like checkout strongly predict purchase
+-Intermediate actions such as add_to_cart sharply increase conversion likelihood
+-Sequence-aware modeling reveals **key leverage points** that static funnels can miss
+
+## Ranking Interactions by Influence
+```{r}
+# Rank funnel interactions by their likelihood of leading to purchase
+abs_probs_df %>%
+  filter(Outcome == "purchase") %>%
+  arrange(desc(Probability))
+```
+**UX takeaway:** Focus design and A/B testing on **high-impact steps**, like adding items to the cart or early product views.
+
+## Visualizing Drop-Offs and User Flow
+
+Alluvial diagrams show **branching behavior**, revealing:
+
+- Dominant navigation paths
+- Where users exit
+- How many ways abandonment occurs
+```{r fig.width=10, dpi=100}
+# Create explicit event-to-event transitions
+df_flow <- df %>%
+  group_by(SessionID) %>%
+  mutate(next_event = lead(EventType)) %>%
+  ungroup() %>%
+  mutate(next_event = ifelse(is.na(next_event), Outcome, next_event)) %>%
+  filter(!is.na(next_event), next_event != "")
+
+# Aggregate transitions
+flow_counts <- df_flow %>%
+  group_by(EventType, next_event) %>%
+  summarise(Freq = n(), .groups = "drop") %>%
+  filter(EventType != next_event)
+
+# Collapse terminal states into "End" and mark outcome
+flow_counts_clean <- flow_counts %>% mutate(EventType = ifelse(EventType %in% c("purchase", "no_purchase"), "End", EventType),
+                                           next_event_label = next_event,
+                                           next_event = ifelse(next_event %in% c("purchase", "no_purchase"), "End", next_event),
+                                           flow_type = case_when(next_event_label == "purchase" ~ "Purchase",
+                                                                 next_event_label == "no_purchase" ~ "Abandon",
+                                                                 TRUE ~ "Intermediate")) %>%
+  group_by(EventType, next_event, flow_type) %>%
+  summarise(Freq = sum(Freq), .groups = "drop")
+
+# Remove first row
+flow_counts_clean <- flow_counts_clean[-c(1, 1), ]
+
+# Define colors for flow types
+flow_colors <- c("Purchase" = "#2ca02c",
+                 "Abandon" = "#d62728",
+                 "Intermediate" = "#1f77b4")
+
+# Plot the alluvial diagram
+ggplot(flow_counts_clean, aes(axis1 = EventType, axis2 = next_event, y = Freq)) +
+  geom_alluvium(aes(fill = flow_type), width = 1/12) +
+  geom_stratum(width = 1/12, fill = "grey80", color = "black") +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  scale_x_discrete(limits = c("Current Event", "Next Event")) +
+  scale_fill_manual(values = flow_colors) +
+  labs(title = "User Flow Through Funnel Steps",
+       subtitle = "Green = purchase, Red = abandonment, Blue = intermediate steps",
+       y = "Number of Users",
+       fill = "Flow Type") +
+  theme_minimal(base_size = 14)
+```
+**UX Insight:**
+
+- Abandonment occurs across multiple paths, not just at a single step
+- Linear funnels oversimplify real behavior; interventions must consider **context and branching**
+
+## Purchase Journey Analysis
+We examine the journey from three perspectives: **magnitude**, **direction**, and **structure.**
+
+## Funnel: Step Completion
+```{r}
+# Define the ordered funnel steps from entry to conversion
+funnel_steps <- c("page_view",
+                  "product_view",
+                  "add_to_cart",
+                  "checkout",
+                  "purchase")
+
+# Determine the furthest funnel step reached by each session
+session_funnel <- df %>%
+  filter(EventType %in% funnel_steps) %>%
+  group_by(SessionID) %>%
+  summarise(step = max(match(EventType, funnel_steps)), .groups = "drop")
+
+# Count number of sessions that reached each step or beyond
+funnel_counts <- data.frame(step = funnel_steps,
+                            value = sapply(seq_along(funnel_steps), function(i)
+                              sum(session_funnel$step >= i)))
+
+# Visualize the funnel as a Plotly funnel chart
+plot_ly(funnel_counts,
+        type = "funnel",
+        y = ~step,
+        x = ~value)
+```
+**Takeaways:**
+
+- Major drop occurs **before add_to_cart**
+- Users who reach checkout are likely to purchase
+- Early exits drive overall funnel losses
+
+
+## Sankey: Step-to-Step Movement
+```{r}
+# Create step-to-step transitions across all sessions
+transitions <- df %>%
+  filter(!is.na(EventType), EventType != "") %>%
+  group_by(SessionID) %>%
+  mutate(next_event = lead(EventType)) %>%
+  ungroup() %>%
+  filter(!is.na(next_event)) %>%
+  count(EventType, next_event, name = "value")
+
+# Define unique nodes for the Sankey diagram (each funnel step)
+nodes <- data.frame(name = unique(c(transitions$EventType, transitions$next_event)))
+
+# Assign numeric IDs required by Plotly Sankey format
+nodes$id <- seq_len(nrow(nodes)) - 1
+
+# Map transition counts to source and target node IDs
+links <- transitions %>%
+  left_join(nodes, by = c("EventType" = "name")) %>%
+  rename(source = id) %>%
+  left_join(nodes, by = c("next_event" = "name")) %>%
+  rename(target = id)
+
+# Normalize transition values so outgoing flows sum to 1 per source step
+links <- links %>%
+  group_by(source) %>%
+  mutate(value = value / sum(value)) %>%
+  ungroup()
+
+# Visualize directional user movement through the funnel as a Sankey diagram
+plot_ly(type = "sankey", node = list(label = nodes$name),
+        link = list(source = links$source,
+                    target = links$target,
+                    value = links$value))
+```
+**Insight:**
+
+- Early exits (logout) dominate drop-offs
+- Few users move backward
+- Successful purchases follow **narrow, consistent paths**
+
+## Sunburst: Complete Session Paths
+```{r}
+# Build full session-level paths and final outcomes (one row per session)
+paths <- df %>%
+  filter(!is.na(EventType), EventType != "") %>%
+  group_by(SessionID) %>%
+  summarise(event_path = paste(EventType, collapse = "/"), outcome = last(Outcome), .groups = "drop")
+
+# Remove any terminal purchase/no_purchase from the raw path
+paths <- paths %>%
+  mutate(event_path = gsub("/?(purchase|no_purchase)$", "", event_path))
+
+# Append outcome to create complete paths ending in purchase or no_purchase
+paths <- paths %>%
+  mutate(full_path = paste(event_path, outcome, sep = "/"))
+
+# Count how many users followed each unique full path
+path_counts <- paths %>%
+  count(full_path, name = "value")
+
+# Generate all hierarchical parent paths needed for a sunburst diagram
+all_paths <- unique(unlist(lapply(strsplit(path_counts$full_path, "/"), function(x)
+    sapply(seq_along(x), function(i)
+      paste(x[1:i], collapse = "/")))))
+
+# Assemble hierarchical data structure required by Plotly sunburst
+sunburst_data <- data.frame(path = all_paths) %>%
+  left_join(path_counts, by = c("path" = "full_path")) %>%
+  mutate(value = ifelse(is.na(value), 0, value), ids = path,
+         labels = sub(".*/", "", path),
+         parents = ifelse(grepl("/", path), sub("/[^/]+$", "", path),""))
+
+# Flag terminal outcome nodes for custom coloring
+sunburst_data <- sunburst_data %>%
+  mutate(is_outcome = labels %in% c("purchase", "no_purchase"))
+
+# Visualize complete user journeys as a sunburst diagram
+plot_ly(sunburst_data,
+        type = "sunburst",
+        ids = ~ids,
+        labels = ~labels,
+        parents = ~parents,
+        values = ~value,
+        marker = list(colors = ifelse(sunburst_data$is_outcome, ifelse(sunburst_data$labels == "purchase", "#2ca02c", "#d62728"), "#1f77b4")))
+```
+**Insight:**
+
+- Dominant path: page_view → product_view → add_to_cart → checkout → purchase
+- Alternative paths mostly terminate in no_purchase
+- Conversion depends on staying on a **narrow “golden path”**
+
+**UX Implications**
+
+By treating events as **connected sequences**, we can:
+
+- Identify **high-impact interactions** driving conversion
+- Understand **where and how users abandon**
+- Prioritize design and experimentation **based on evidence**
+
+Sequence-aware analysis provides **better insight than static funnels**, while complementing qualitative research to answer **where and why UX issues occur.**
+
+**Bottom line:** Behavior-aware analytics leads to **smarter UX decisions** and more effective product interventions.

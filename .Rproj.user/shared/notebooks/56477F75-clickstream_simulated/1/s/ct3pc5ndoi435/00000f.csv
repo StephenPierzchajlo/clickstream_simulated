@@ -1,0 +1,8 @@
+"0","# ----------------------------------------"
+"0","# 3. Fit Markov chain using MLE"
+"0","# ----------------------------------------"
+"0",""
+"0","mc <- markovchainFit("
+"0","  data = transitions[, c(""EventType"", ""next_event"")],"
+"0","  method = ""mle"""
+"0",")$estimate"

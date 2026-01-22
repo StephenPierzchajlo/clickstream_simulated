@@ -1,0 +1,8 @@
+"0","plot_ly("
+"0","  ids = sunburst_data$id,"
+"0","  labels = sunburst_data$labels,"
+"0","  parents = sunburst_data$parent_id,"
+"0","  values = sunburst_data$values,"
+"0","  type = ""sunburst"","
+"0","  branchvalues = ""total"""
+"0",")"

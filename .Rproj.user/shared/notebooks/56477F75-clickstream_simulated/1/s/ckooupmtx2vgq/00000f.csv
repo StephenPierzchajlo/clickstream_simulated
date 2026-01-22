@@ -1,0 +1,7 @@
+"0","# Build transitions table"
+"0","transitions <- df %>%"
+"0","  group_by(SessionID) %>%"
+"0","  mutate(next_event = lead(EventType)) %>%"
+"0","  ungroup() %>%"
+"0","  # Replace final NA with outcome to create absorbing states"
+"0","  mutate(next_event = ifelse(is.na(next_event), Outcome, next_event))"

@@ -1,0 +1,1 @@
+https://www.kaggle.com/datasets/waqi786/e-commerce-clickstream-and-transaction-dataset?select=ecommerce_clickstream_transactions.csv

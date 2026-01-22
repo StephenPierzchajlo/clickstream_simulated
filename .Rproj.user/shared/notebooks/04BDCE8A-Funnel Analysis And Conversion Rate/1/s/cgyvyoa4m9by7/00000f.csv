@@ -1,0 +1,7 @@
+"0","# Reshape data from wide to long format so each row represents one user at one funnel step"
+"0","df_long <- df %>%"
+"0","  pivot_longer(cols = c(home, search, payment, confirmation),"
+"0","               names_to = ""step"","
+"0","               values_to = ""page"") %>%"
+"0","  filter(!is.na(page)) %>%"
+"0","  mutate(step = factor(step, levels = c(""home"",""search"",""payment"",""confirmation"")))"

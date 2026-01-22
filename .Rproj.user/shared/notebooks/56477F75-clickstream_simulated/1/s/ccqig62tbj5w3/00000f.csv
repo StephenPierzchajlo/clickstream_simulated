@@ -1,0 +1,3 @@
+"0","abs_probs_df %>%"
+"0","  filter(Outcome == ""purchase"") %>%"
+"0","  arrange(desc(Probability))"
