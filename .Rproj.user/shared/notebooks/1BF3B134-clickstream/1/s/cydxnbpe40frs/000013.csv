@@ -1,8 +1,0 @@
-"0","transitions2 <- df_mod %>%"
-"0","  group_by(UserID, SessionID) %>%"
-"0","  arrange(Timestamp) %>%"
-"0","  mutate(next_event = lead(EventType)) %>%"
-"0","  ungroup() %>%"
-"0","  mutate(next_event = ifelse(is.na(next_event),"
-"0","                             ifelse(Outcome == ""purchase"", ""purchase"", ""no_purchase""),"
-"0","                             next_event))"

@@ -1,6 +1,0 @@
-"0","library(markovchain)"
-"0",""
-"0","mc <- markovchainFit("
-"0","  data = transitions2[, c(""EventType"", ""next_event"")],"
-"0","  method = ""mle"""
-"0",")$estimate"

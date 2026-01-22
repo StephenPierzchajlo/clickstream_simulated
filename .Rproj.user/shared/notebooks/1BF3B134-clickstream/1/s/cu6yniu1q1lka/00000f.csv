@@ -1,6 +1,0 @@
-"0","set.seed(123)"
-"0","df_mod <- df %>%"
-"0","  mutate("
-"0","    Outcome = ifelse(Outcome == ""purchase"" & runif(n()) < 0.5, ""no_purchase"", Outcome),"
-"0","    EventType = ifelse(Outcome == ""no_purchase"" & runif(n()) < 0.3, ""exit_early"", EventType)"
-"0","  )"

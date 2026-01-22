@@ -3,11 +3,9 @@ project:
   output-dir: docs
 
 website:
-  title: "Understanding User Journeys with Clickstream Analysis"
+  title: "Clickstream UX Analysis"
 
 format:
   html:
-    toc: true
-    toc-depth: 3
     theme: cosmo
-    code-fold: true
+    toc: true

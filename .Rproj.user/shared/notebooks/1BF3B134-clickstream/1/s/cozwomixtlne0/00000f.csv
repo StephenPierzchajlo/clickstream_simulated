@@ -1,4 +1,0 @@
-"0","ggplot(abs_probs_df, aes(x = Event, y = Probability, fill = Outcome)) +"
-"0","  geom_col(position = ""dodge"") +"
-"0","  coord_flip() +"
-"0","  labs(title = ""Probability of Ending in Purchase or No Purchase by Event"")"

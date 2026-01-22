@@ -1,2 +1,0 @@
-"0","#set.seed(123)"
-"0","df_mod$Outcome <- ifelse(runif(nrow(df_mod)) < 0.5, ""no_purchase"", df_mod$Outcome)"
